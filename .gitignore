@@ -1,0 +1,29 @@
+__pycache__/
+*.py[cod]
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Distribution / packaging
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Unit test / coverage reports
+.htmlcov/
+.coverage
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# mypy
+.mypy_cache/
