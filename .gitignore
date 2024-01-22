@@ -18,6 +18,7 @@ wheels/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+tests/testing.ipynb
 
 # Environments
 .env
