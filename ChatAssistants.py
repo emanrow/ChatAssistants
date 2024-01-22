@@ -3,7 +3,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 class ChatMessage:
     """A ChatMessage is akin to an OpenAI.client.beta.threads.message object.
@@ -71,6 +71,10 @@ class ChatMessages:
     """
     def __init__(self):
         self._messages = []
+
+    def __iter__(self):
+        """This method allows iteration over the ChatMessages object."""
+        return iter(self._messages)
 
     def create(self, role: str, content: str) -> ChatMessage:
         new_message = ChatMessage(role, content)
