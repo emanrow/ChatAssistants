@@ -1,6 +1,7 @@
 import uuid
 import json
 import logging
+from abc import ABC, abstractmethod
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -172,10 +173,14 @@ class SystemChatMessage(ChatMessage):
 
     def __repr__(self) -> str:
         content_str = self.content[:34]+"..." if len(self.content) > 38 else self.content
-        return f"SystemChatMessage(id={self.id!r}, role = {self.role!r}, content = {content_str!r} )"
+        return (f"SystemChatMessage(id={self.id!r}, "
+                "role = {self.role!r}, content = {content_str!r} )")
 
     @classmethod
     def from_chatmessage(cls, chat_message: ChatMessage):
+        if chat_message.role != "system":
+            raise ValueError("ChatMessage should have a role of 'system' "
+                             "to be converted to a SystemChatMessage.")
         return cls(content = chat_message.content)
     
     def to_chatmessage(self):
@@ -237,3 +242,46 @@ class ConversationThread:
     def __repr__(self):
         return f"ConversationThread(system_message = {self.system_message!r}, chat_exchanges = {self.chat_exchanges!r})"
     
+class AbstractChatAdapter(ABC):
+    @abstractmethod
+    def from_chatmessage(self, chatmessage: ChatMessage):
+        pass
+
+    @abstractmethod
+    def to_chatmessage(self) -> ChatMessage:
+        pass
+
+    @abstractmethod
+    def from_systemchatmessage(self, systemchatmessage: SystemChatMessage):
+        pass
+
+    @abstractmethod
+    def to_systemchatmessage(self) -> SystemChatMessage:
+        pass
+
+    @abstractmethod
+    def from_chatmessages(self, chatmessages: ChatMessages):
+        pass
+
+    @abstractmethod
+    def to_chatmessages(self) -> ChatMessages:
+        pass
+
+    @abstractmethod
+    def from_chatexchange(self, chatexchange: ChatExchange):
+        pass
+
+    @abstractmethod
+    def to_chatexchange(self) -> ChatExchange:
+        pass
+
+    @abstractmethod
+    def from_conversationthread(self, conversationthread: ConversationThread):
+        pass
+
+    @abstractmethod
+    def to_conversationthread(self) -> ConversationThread:
+        pass
+
+
+
