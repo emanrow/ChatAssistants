@@ -118,7 +118,8 @@ class TestOpenAIAdapter(unittest.TestCase):
         prompt = ChatMessage(role="user", content="User message")
         response = ChatMessage(role="assistant", content="Assistant message")
         chat_exchange = ChatExchange(prompt=prompt, response=response)
-        conversation_thread = ConversationThread(system_message=system_message, chat_exchanges=[chat_exchange])
+        conversation_thread = ConversationThread(system_message=system_message, 
+                                                 chat_exchanges=[chat_exchange])
 
         result = self.adapter.from_conversationthread(conversation_thread)
         expected = [
