@@ -2,8 +2,17 @@ import uuid
 import json
 import logging
 from abc import ABC, abstractmethod
+import enum
+import time
 
 logging.basicConfig(level=logging.WARNING)
+
+class RunStatus(enum.Enum):
+    UNSUBMITTED = 0
+    SUBMITTED = 1
+    QUEUED = 2
+    COMPLETED = 3
+    ERROR = 4
 
 class ChatMessage:
     """A ChatMessage is akin to an OpenAI.client.beta.threads.message object.
@@ -190,15 +199,32 @@ class SystemChatMessage(ChatMessage):
     def to_chatmessage(self):
         return ChatMessage(role = "system", content = self.content)
 
+class ConversationThreadRun:
+    """This is a state object for a submission to an LLM. It contains a 
+    queryable unique run ID, run diagnostics, status, and
+    the response from the LLM."""
+    def __init__(self, max_attempts = 3, timeout = 60):
+        self.id = str(uuid.uuid4())
+        self.creation_time = time.time()
+        self.submission_time = None
+        self.completion_time = None
+        self.duration = None
+        self.max_attempts = max_attempts
+        self.timeout = timeout
+        self.status = RunStatus.UNSUBMITTED
+        self.response = None
+
 class ConversationThread:
     """This is a payload object to manage a list of ChatExchange objects,
     prepended by a SystemChatMessage object. This can then be either appended
     with a single ChatMessage (prompt) object and passed to an LLM to obtain
     a response (completing the next ChatExchange), updated with the next ChatExchange,
     or serialized to a JSON string for storage or transmission."""
-    def __init__(self, system_message: SystemChatMessage, chat_exchanges: list = []):
+    def __init__(self, system_message: SystemChatMessage, chat_exchanges: list = [],
+                 next_prompt: ChatMessage = None):
         self.system_message = system_message
         self.chat_exchanges = chat_exchanges
+        self.next_prompt = next_prompt
 
     @property
     def system_message(self):
@@ -218,6 +244,27 @@ class ConversationThread:
             if not isinstance(chat_exchange, ChatExchange):
                 raise ValueError("chat_exchanges must be a list of ChatExchange objects.")
         self._chat_exchanges = new_chat_exchanges
+
+    @property
+    def next_prompt(self):
+        return self._next_prompt
+    
+    @next_prompt.setter
+    def next_prompt(self, new_next_prompt: ChatMessage):
+        if new_next_prompt is not None and new_next_prompt.role != "user":
+            raise ValueError("next_prompt must be a user message.")
+        self._next_prompt = new_next_prompt
+
+    def run(self, llm_callback: callable, max_attempts = 3) -> None:
+        """This method runs the ConversationThread through the LLM, obtains
+        the response to complete the next ChatExchange, and appends the
+        new ChatExchange to the list of ChatExchanges."""
+        if self.next_prompt is None:
+            raise ValueError("next_prompt must be set before running the ConversationThread.")
+        
+        self.append(llm_callback(self))
+        
+        return None
 
     def append(self, chat_exchange: ChatExchange) -> None:
         if not isinstance(chat_exchange, ChatExchange):
