@@ -178,7 +178,7 @@ class SystemChatMessage(ChatMessage):
     def __repr__(self) -> str:
         content_str = self.content[:34]+"..." if len(self.content) > 38 else self.content
         return (f"SystemChatMessage(id={self.id!r}, "
-                "role = {self.role!r}, content = {content_str!r} )")
+                f"role = {self.role!r}, content = {content_str!r} )")
 
     @classmethod
     def from_chatmessage(cls, chat_message: ChatMessage):
