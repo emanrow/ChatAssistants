@@ -203,16 +203,31 @@ class ConversationThreadRun:
     """This is a state object for a submission to an LLM. It contains a 
     queryable unique run ID, run diagnostics, status, and
     the response from the LLM."""
-    def __init__(self, max_attempts = 3, timeout = 60):
+    def __init__(self, max_attempts = 3, timeout = 60, adapter = None):
         self.id = str(uuid.uuid4())
         self.creation_time = time.time()
         self.submission_time = None
         self.completion_time = None
         self.duration = None
+        self.attempts = 0
         self.max_attempts = max_attempts
         self.timeout = timeout
         self.status = RunStatus.UNSUBMITTED
+        self.raw_response = None
         self.response = None
+        self.adapter = None
+
+    def __str__(self):
+        return f"Run {self.id} status: {self.status}."
+    
+    def __repr__(self):
+        return (f"ConversationThreadRun(id = {self.id!r}, "
+                f"status = {self.status!r}, "
+                f"attempts = {self.attempts!r}, "
+                f"max_attempts = {self.max_attempts!r}, "
+                f"timeout = {self.timeout!r}, "
+                f"raw_response = {self.raw_response!r}, "
+                f"response = {self.response!r})")
 
 class ConversationThread:
     """This is a payload object to manage a list of ChatExchange objects,
@@ -255,16 +270,57 @@ class ConversationThread:
             raise ValueError("next_prompt must be a user message.")
         self._next_prompt = new_next_prompt
 
-    def run(self, llm_callback: callable, max_attempts = 3) -> None:
+    def run(self, llm_callback: callable, max_attempts = 3, timeout = 60, 
+            adapter = None, *llm_params) -> ConversationThreadRun:
         """This method runs the ConversationThread through the LLM, obtains
         the response to complete the next ChatExchange, and appends the
         new ChatExchange to the list of ChatExchanges."""
         if self.next_prompt is None:
             raise ValueError("next_prompt must be set before running the ConversationThread.")
         
-        self.append(llm_callback(self))
+        _run_object = ConversationThreadRun(max_attempts = max_attempts, timeout = timeout)
+
+        # This isn't right... should be using the appropriate adapter to get the
+        # correct format for the LLM input.
+        _submission_list = [self.system_message.to_dict(include_id = False)]
+        for exchange in self.chat_exchanges:
+            _submission_list.append(exchange.prompt.to_dict(include_id = False))
+            _submission_list.append(exchange.response.to_dict(include_id = False))
+        _submission_list.append(self.next_prompt.to_dict(include_id = False))
+
+        _run_object.max_attempts = max_attempts
         
-        return None
+        while _run_object.attempts < max_attempts:
+            _run_object.submission_time = time.time()
+            _run_object.attempts += 1
+            _run_object.status = RunStatus.SUBMITTED
+            try:
+                _run_object.raw_response = llm_callback(self, _submission_list, timeout, *llm_params)
+                _run_object.status = RunStatus.COMPLETED
+            except ValueError:
+                _run_object.status = RunStatus.ERROR
+                continue
+                       
+        _run_object.completion_time = time.time()
+        _run_object.duration = _run_object.completion_time - _run_object.creation_time
+        
+        # Should now use the correct adapter to coerce the LLM response into a
+        # ChatMessage object.
+        if adapter is not None:
+            _run_object.response = adapter.to_chatmessage(_run_object.raw_response)
+        else:
+            _run_object.response = _run_object.raw_response
+
+        if isinstance(_run_object.response, ChatMessage):
+            _new_exchange = ChatExchange(prompt = self.next_prompt, 
+                                         response = _run_object.response)
+            self.chat_exchanges.append(_new_exchange)
+        else:
+            raise ValueError("Could not update ConversationThread ChatExchanges: "
+                             "The LLM response was not adapted to a ChatMessage object.")
+
+        logging.debug(f"ConversationThread.run() returning {_run_object}.")
+        return _run_object
 
     def append(self, chat_exchange: ChatExchange) -> None:
         if not isinstance(chat_exchange, ChatExchange):
