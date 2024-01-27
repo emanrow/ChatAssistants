@@ -4,15 +4,18 @@ import logging
 from abc import ABC, abstractmethod
 import enum
 import time
+import asyncio
 
 logging.basicConfig(level=logging.WARNING)
 
 class RunStatus(enum.Enum):
     UNSUBMITTED = 0
-    SUBMITTED = 1
-    QUEUED = 2
-    COMPLETED = 3
-    ERROR = 4
+    PENDING = 1
+    SUBMITTED = 2
+    QUEUED = 3
+    COMPLETED = 4
+    ERROR = 5
+    FAILED = 6
 
 class ChatMessage:
     """A ChatMessage is akin to an OpenAI.client.beta.threads.message object.
@@ -205,7 +208,7 @@ class ConversationThreadRun:
     the response from the LLM."""
     def __init__(self, max_attempts = 3, timeout = 60, adapter = None):
         self.id = str(uuid.uuid4())
-        self.creation_time = time.time()
+        self.creation_time = asyncio.get_event_loop().time()
         self.submission_time = None
         self.completion_time = None
         self.duration = None
@@ -213,9 +216,14 @@ class ConversationThreadRun:
         self.max_attempts = max_attempts
         self.timeout = timeout
         self.status = RunStatus.UNSUBMITTED
+        self.submission_list = None
+        self.llm_callback = None
+        self.cb_args = None
+        self.cb_kwargs = None
+        self.error_list = []
         self.raw_response = None
-        self.response = None
         self.adapter = None
+        self.response = None  
 
     def __str__(self):
         return f"Run {self.id} status: {self.status}."
@@ -270,16 +278,42 @@ class ConversationThread:
             raise ValueError("next_prompt must be a user message.")
         self._next_prompt = new_next_prompt
 
+    async def _submit_to_llm(self, callable):
+        # Asynchronous submission logic using the provided callable
+        # This method should return the LLM's response
+        return await callable()
+
     def run(self, llm_callback: callable, max_attempts = 3, timeout = 60, 
-            adapter = None, *llm_params) -> ConversationThreadRun:
+            adapter = None, *cb_args, **cb_kwargs) -> ConversationThreadRun:
         """This method runs the ConversationThread through the LLM, obtains
         the response to complete the next ChatExchange, and appends the
-        new ChatExchange to the list of ChatExchanges."""
+        new ChatExchange to the list of ChatExchanges.
+        
+        The LLM callback function should be implemented to take whatever
+        arguments """
         if self.next_prompt is None:
             raise ValueError("next_prompt must be set before running the ConversationThread.")
-        
-        _run_object = ConversationThreadRun(max_attempts = max_attempts, timeout = timeout)
 
+        # Packaging everything in a stateful ConversationThreadRun object        
+        _run_object = ConversationThreadRun(max_attempts = max_attempts, 
+                                            timeout = timeout)
+        _run_object.llm_callback = llm_callback
+        _run_object.cb_args = cb_args
+        _run_object.cb_kwargs = cb_kwargs
+        _run_object.adapter = adapter
+
+        # Broad strokes:
+        # I.   Adapt the _submission_list to the LLM input format
+        # II.  Submit the _submission_list to the LLM via the handler, which 
+        #      returns nothing, immediately without waiting for the response.
+        # III. Return the run object with the response and status set
+
+        # Then, in the handler:
+        # II(a). Adapt the LLM response to a ChatMessage object
+        # II(b). Update the ConversationThread with the new ChatExchange
+        # II(c). Update the run object with the response and status
+
+        # I.   Adapt the _submission_list to the LLM input format
         # This isn't right... should be using the appropriate adapter to get the
         # correct format for the LLM input.
         _submission_list = [self.system_message.to_dict(include_id = False)]
@@ -287,40 +321,57 @@ class ConversationThread:
             _submission_list.append(exchange.prompt.to_dict(include_id = False))
             _submission_list.append(exchange.response.to_dict(include_id = False))
         _submission_list.append(self.next_prompt.to_dict(include_id = False))
+        _run_object.submission_list = _submission_list
 
-        _run_object.max_attempts = max_attempts
-        
-        while _run_object.attempts < max_attempts:
-            _run_object.submission_time = time.time()
-            _run_object.attempts += 1
-            _run_object.status = RunStatus.SUBMITTED
-            try:
-                _run_object.raw_response = llm_callback(self, _submission_list, timeout, *llm_params)
-                _run_object.status = RunStatus.COMPLETED
-            except ValueError:
-                _run_object.status = RunStatus.ERROR
-                continue
-                       
-        _run_object.completion_time = time.time()
-        _run_object.duration = _run_object.completion_time - _run_object.creation_time
+        # II.  Submit the _submission_list to the LLM via the handler
+        _run_object.status = RunStatus.PENDING
+        asyncio.create_task(self._handle_submission(_run_object))
         
         # Should now use the correct adapter to coerce the LLM response into a
         # ChatMessage object.
-        if adapter is not None:
-            _run_object.response = adapter.to_chatmessage(_run_object.raw_response)
-        else:
-            _run_object.response = _run_object.raw_response
+        # if adapter is not None:
+        #     _run_object.response = adapter.to_chatmessage(_run_object.raw_response)
+        # else:
+        #     _run_object.response = _run_object.raw_response
 
-        if isinstance(_run_object.response, ChatMessage):
-            _new_exchange = ChatExchange(prompt = self.next_prompt, 
-                                         response = _run_object.response)
-            self.chat_exchanges.append(_new_exchange)
-        else:
-            raise ValueError("Could not update ConversationThread ChatExchanges: "
-                             "The LLM response was not adapted to a ChatMessage object.")
+        # if isinstance(_run_object.response, ChatMessage):
+        #     _new_exchange = ChatExchange(prompt = self.next_prompt, 
+        #                                  response = _run_object.response)
+        #     self.chat_exchanges.append(_new_exchange)
+        # else:
+        #     raise ValueError("Could not update ConversationThread ChatExchanges: "
+        #                      "The LLM response was not adapted to a ChatMessage object.")
 
-        logging.debug(f"ConversationThread.run() returning {_run_object}.")
+        # logging.debug(f"ConversationThread.run() returning {_run_object}.")
         return _run_object
+
+    async def _handle_submission(self, ro: ConversationThreadRun):
+        # This is the asynchronous handler for the LLM submission.
+        # Calling the run_oject `ro` just to save space
+        _delay_time = 3
+
+        while ro.attempts < ro.max_attempts:
+            ro.submission_time = asyncio.get_event_loop().time()
+            ro.attempts += 1
+            ro.status = RunStatus.SUBMITTED
+            try:
+                ro.raw_response = await ro.llm_callback(self, ro.submission_list,
+                                                        ro.cb_args, ro.cb_kwargs)
+            except Exception as e:
+                ro.status = RunStatus.ERROR
+                logging.error(f"Error in LLM callback attempt #{ro.attempts}: {e}")
+                ro.error_list.append(e)
+                if ro.attempts >= ro.max_attempts:
+                    ro.status = RunStatus.FAILED
+                    return ro
+                await asyncio.sleep(_delay_time)
+                pass
+            else:
+                ro.completion_time = asyncio.get_event_loop().time()
+                ro.duration = ro.completion_time - ro.creation_time
+                ro.status = RunStatus.COMPLETED
+                return ro
+
 
     def append(self, chat_exchange: ChatExchange) -> None:
         if not isinstance(chat_exchange, ChatExchange):
