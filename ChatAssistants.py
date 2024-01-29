@@ -374,9 +374,9 @@ class ConversationThread:
             ro.attempts += 1
             ro.status = RunStatus.SUBMITTED
             try:
-                ro.raw_response = await ro.adapter.llm_callback(self, ro.conversation_thread,
-                                                                ro.cb_args,
-                                                                ro.cb_kwargs)
+                ro.raw_response = await ro.adapter.llm_callback(self,
+                                                                *ro.cb_args,
+                                                                **ro.cb_kwargs)
             except Exception as e:
                 ro.status = RunStatus.ERROR
                 logging.error(f"Error in LLM callback attempt #{ro.attempts}: {e}")

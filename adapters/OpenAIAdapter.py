@@ -53,6 +53,7 @@ class OpenAIAdapter(AbstractChatAdapter):
     
     def from_conversationthread(self, conversation_thread: ConversationThread):
         chatmessages_list = [conversation_thread.system_message]
+
         for chatexchange in conversation_thread.chat_exchanges:
             chatmessages_list.append(chatexchange.prompt)
             chatmessages_list.append(chatexchange.response)
@@ -80,9 +81,15 @@ class OpenAIAdapter(AbstractChatAdapter):
         return ConversationThread(system_message = system_chatmessage,
                                   chat_exchanges = chat_exchanges)    
     
-    def llm_callback(self, conversationthread: ConversationThread, model: str,
-                     ) -> dict:
+    def llm_callback(self, conversationthread: ConversationThread,
+                     *cb_args, **cb_kwargs) -> dict:
         """
         This is the callback function that actually uses the LLM API to obtain
         a response.
         """
+        model = cb_kwargs.get('model')
+        print(f"Conversation thread: {conversationthread}")
+        print(f"Model:               {model}")
+        print(f"Callback args:       {cb_args}")
+        print(f"Callback kw args:    {cb_kwargs}")
+        # TODO: Implement!
