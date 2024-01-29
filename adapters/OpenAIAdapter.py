@@ -80,3 +80,9 @@ class OpenAIAdapter(AbstractChatAdapter):
         return ConversationThread(system_message = system_chatmessage,
                                   chat_exchanges = chat_exchanges)    
     
+    def llm_callback(self, conversationthread: ConversationThread, model: str,
+                     ) -> dict:
+        """
+        This is the callback function that actually uses the LLM API to obtain
+        a response.
+        """

@@ -1,10 +1,11 @@
+from __future__ import annotations
 import uuid
 import json
 import logging
 from abc import ABC, abstractmethod
 import enum
-import time
 import asyncio
+import copy
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -216,14 +217,48 @@ class ConversationThreadRun:
         self.max_attempts = max_attempts
         self.timeout = timeout
         self.status = RunStatus.UNSUBMITTED
-        self.submission_list = None
+        self.conversation_thread: ConversationThread = None
+        self.thread_snapshot: ConversationThread = None
+        self.submission_list: list = None
         self.llm_callback = None
         self.cb_args = None
         self.cb_kwargs = None
         self.error_list = []
-        self.raw_response = None
-        self.adapter = None
-        self.response = None  
+        self.raw_response: dict = None
+        self.adapter: AbstractChatAdapter = adapter
+        self.response: ChatMessage = None
+
+    def adapt_submission(self, tr: ConversationThread):
+        if self.adapter is None:
+            logging.warning("No adapter set in ConversationThreadRun object. "
+                            "Setting `submission_list` equal to `raw_submission_list`.")
+            return None
+        
+        if self.raw_submission_list is None:
+            logging.error("Cannot adapt submission: raw_submission_list is None.")
+            return None
+
+        try:
+            self.submission_list = self.adapter.from_conversationthread(self.raw_submission_list)
+        except Exception as e:
+            logging.error(f"Error adapting submission using provided ChatAdapter: {e}")
+            raise e
+
+    def adapt_response(self):
+        if self.raw_response is None:
+            logging.error("Cannot adapt response: raw_response is None.")
+            return None
+        
+        if self.adapter is None:
+            logging.warning("No adapter set in ConversationThreadRun object. "
+                            "Setting `response` equal to `raw_response`.")
+            self.response = self.raw_response
+        
+        try:
+            self.response = self.adapter.to_chatmessage(self.raw_response)
+        except Exception as e:
+            logging.error(f"Error adapting response using provided ChatAdapter: {e}")
+            raise e
 
     def __str__(self):
         return f"Run {self.id} status: {self.status}."
@@ -283,8 +318,8 @@ class ConversationThread:
         # This method should return the LLM's response
         return await callable()
 
-    def run(self, llm_callback: callable, max_attempts = 3, timeout = 60, 
-            adapter = None, *cb_args, **cb_kwargs) -> ConversationThreadRun:
+    def run(self, max_attempts = 3, timeout = 60, adapter: AbstractChatAdapter = None, 
+            *cb_args, **cb_kwargs) -> ConversationThreadRun:
         """This method runs the ConversationThread through the LLM, obtains
         the response to complete the next ChatExchange, and appends the
         new ChatExchange to the list of ChatExchanges.
@@ -297,12 +332,14 @@ class ConversationThread:
         # Packaging everything in a stateful ConversationThreadRun object        
         _run_object = ConversationThreadRun(max_attempts = max_attempts, 
                                             timeout = timeout)
-        _run_object.llm_callback = llm_callback
         _run_object.cb_args = cb_args
         _run_object.cb_kwargs = cb_kwargs
         _run_object.adapter = adapter
+        _run_object.conversation_thread = self
+        _run_object.thread_snapshot = copy.deepcopy(self)
 
         # Broad strokes:
+        # TODO: Refactor this all so that it is self-documenting
         # I.   Adapt the _submission_list to the LLM input format
         # II.  Submit the _submission_list to the LLM via the handler, which 
         #      returns nothing, immediately without waiting for the response.
@@ -316,33 +353,13 @@ class ConversationThread:
         # I.   Adapt the _submission_list to the LLM input format
         # This isn't right... should be using the appropriate adapter to get the
         # correct format for the LLM input.
-        _submission_list = [self.system_message.to_dict(include_id = False)]
-        for exchange in self.chat_exchanges:
-            _submission_list.append(exchange.prompt.to_dict(include_id = False))
-            _submission_list.append(exchange.response.to_dict(include_id = False))
-        _submission_list.append(self.next_prompt.to_dict(include_id = False))
-        _run_object.submission_list = _submission_list
+        _run_object.submission_list = _run_object.adapter.from_conversationthread(self)
 
         # II.  Submit the _submission_list to the LLM via the handler
         _run_object.status = RunStatus.PENDING
         asyncio.create_task(self._handle_submission(_run_object))
-        
-        # Should now use the correct adapter to coerce the LLM response into a
-        # ChatMessage object.
-        # if adapter is not None:
-        #     _run_object.response = adapter.to_chatmessage(_run_object.raw_response)
-        # else:
-        #     _run_object.response = _run_object.raw_response
 
-        # if isinstance(_run_object.response, ChatMessage):
-        #     _new_exchange = ChatExchange(prompt = self.next_prompt, 
-        #                                  response = _run_object.response)
-        #     self.chat_exchanges.append(_new_exchange)
-        # else:
-        #     raise ValueError("Could not update ConversationThread ChatExchanges: "
-        #                      "The LLM response was not adapted to a ChatMessage object.")
-
-        # logging.debug(f"ConversationThread.run() returning {_run_object}.")
+        # III. Return the run object with the response and status set
         return _run_object
 
     async def _handle_submission(self, ro: ConversationThreadRun):
@@ -350,13 +367,16 @@ class ConversationThread:
         # Calling the run_oject `ro` just to save space
         _delay_time = 3
 
+        # II(a). Adapt the LLM response to a ChatMessage object
+
         while ro.attempts < ro.max_attempts:
             ro.submission_time = asyncio.get_event_loop().time()
             ro.attempts += 1
             ro.status = RunStatus.SUBMITTED
             try:
-                ro.raw_response = await ro.llm_callback(self, ro.submission_list,
-                                                        ro.cb_args, ro.cb_kwargs)
+                ro.raw_response = await ro.adapter.llm_callback(self, ro.conversation_thread,
+                                                                ro.cb_args,
+                                                                ro.cb_kwargs)
             except Exception as e:
                 ro.status = RunStatus.ERROR
                 logging.error(f"Error in LLM callback attempt #{ro.attempts}: {e}")
@@ -367,11 +387,21 @@ class ConversationThread:
                 await asyncio.sleep(_delay_time)
                 pass
             else:
+                # Submission was successful: Snapshot the thread and return
+                ro.thread_snapshot = copy.deepcopy(ro.conversation_thread)
+                # II(b). Update the ConversationThread with the new ChatExchange
+                ro.adapt_response()
+                # TODO: This needs better validation
+                _new_exchange = ChatExchange(prompt = self.next_prompt, 
+                                             response = ro.response)
+                self.chat_exchanges.append(_new_exchange)
+
+                # II(c). Update the run object with the response and status
+                # TODO: This needs better validation
+                ro.status = RunStatus.COMPLETED
                 ro.completion_time = asyncio.get_event_loop().time()
                 ro.duration = ro.completion_time - ro.creation_time
-                ro.status = RunStatus.COMPLETED
                 return ro
-
 
     def append(self, chat_exchange: ChatExchange) -> None:
         if not isinstance(chat_exchange, ChatExchange):
@@ -441,5 +471,18 @@ class AbstractChatAdapter(ABC):
     def to_conversationthread(self) -> ConversationThread:
         pass
 
+    @abstractmethod
+    def llm_callback(self, conversationthread: ConversationThread, 
+                     *args, **kwargs):
+        """
+        This method should handle the communication with the LLM, process the response,
+        and return a value that can be adapted to a ChatMessage object.
+        
+        A sane way to do this would be to design llm_callback to use the adapter method
+        from_conversationthread to convert the ConversationThread to the LLM input format,
+        and to return the LLM response as a dict that can be adapted to a ChatMessage
+        object with to_chatmessage. But you do you.
+        """
+        pass
 
 
