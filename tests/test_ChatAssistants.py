@@ -1,5 +1,6 @@
 import unittest
-from ChatAssistants import ChatMessages, ChatMessage, ChatExchange, SystemChatMessage
+from ChatAssistants import (ChatMessages, ChatMessage, ChatExchange, SystemChatMessage,
+                           ConversationThread, AbstractChatAdapter)
 
 class TestChatMessages(unittest.TestCase):
 
@@ -34,4 +35,55 @@ class TestChatMessages(unittest.TestCase):
                 self.assertIsInstance(system_message, SystemChatMessage)
                 self.assertEqual(system_message.content, message.content)
 
-    # Additional tests can be added here...
+    def test_chatexchange_creation(self):
+        # Test if a ChatExchange is created correctly
+        chatexchange = ChatExchange(prompt = self.user_message, response = self.assistant_message)
+        self.assertIsInstance(chatexchange, ChatExchange)
+        self.assertEqual(chatexchange.prompt, self.user_message)
+        self.assertEqual(chatexchange.response, self.assistant_message)
+
+    def test_conversationthread_creation(self):
+        # Test if a ConversationThread is created correctly
+        convo_thread = ConversationThread(system_message = self.system_message,
+                                          chat_exchanges = [ChatExchange(prompt = self.user_message,
+                                                                         response = self.assistant_message),
+                                                            ChatExchange(prompt = self.user_message,
+                                                                         response = self.assistant_message),
+                                                            ChatExchange(prompt = self.user_message,
+                                                                         response = self.assistant_message)])
+        self.assertIsInstance(convo_thread, ConversationThread)
+        self.assertEqual(convo_thread.system_message, self.system_message)
+        self.assertEqual(convo_thread.chat_exchanges[0].prompt, self.user_message)
+        self.assertEqual(convo_thread.chat_exchanges[2].response, self.assistant_message)
+
+    def test_conversationthread_run(self):
+        # Test if a ConversationThread runs correctly
+        convo_thread = ConversationThread(system_message = self.system_message,
+                                          chat_exchanges = [ChatExchange(prompt = self.user_message,
+                                                                         response = self.assistant_message),
+                                                            ChatExchange(prompt = self.user_message,
+                                                                         response = self.assistant_message),
+                                                            ChatExchange(prompt = self.user_message,
+                                                                         response = self.assistant_message)])
+        convo_thread.next_prompt = self.user_message
+        class mock_adapter(AbstractChatAdapter):
+            def __init__(self):
+                pass
+
+            def from_conversationthread(self, conversation_thread: ConversationThread):
+                return [{"role": "system", "content": "This is a mock system message."},
+                        {"role": "user", "content": "This is a mock user message."},
+                        {"role": "assistant", "content": "This is a mock assistant response."}]
+            
+            def to_chatmessage(self, message_dict: dict) -> ChatMessage:
+                return ChatMessage(role = message_dict["role"], content = message_dict["content"])
+            
+            def llm_callback(self, conversationthread: ConversationThread, *args, **kwargs):
+                return {"role": "assistant", "content": "This is a mock assistant response."}
+
+        convo_thread.run(adapter = mock_adapter)
+        self.assertEqual(len(convo_thread.chat_exchanges), 3)
+        self.assertEqual(convo_thread.chat_exchanges[0].prompt, self.user_message)
+        self.assertEqual(convo_thread.chat_exchanges[2].response, self.assistant_message)
+        self.assertEqual(convo_thread.chat_exchanges[3].prompt.content, "Hello, I am the user message.")
+        self.assertEqual(convo_thread.chat_exchanges[3].response.content, "This is a mock assistant response.")

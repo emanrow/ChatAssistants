@@ -234,12 +234,12 @@ class ConversationThreadRun:
                             "Setting `submission_list` equal to `raw_submission_list`.")
             return None
         
-        if self.raw_submission_list is None:
+        if self.conversation_thread is None:
             logging.error("Cannot adapt submission: raw_submission_list is None.")
             return None
 
         try:
-            self.submission_list = self.adapter.from_conversationthread(self.raw_submission_list)
+            self.submission_list = self.adapter.from_conversationthread(self.conversation_thread)
         except Exception as e:
             logging.error(f"Error adapting submission using provided ChatAdapter: {e}")
             raise e
