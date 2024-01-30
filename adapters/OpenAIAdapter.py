@@ -3,9 +3,10 @@ import logging
 from ChatAssistants import (AbstractChatAdapter, ChatMessage, ChatMessages, 
                             SystemChatMessage, ChatExchange, ConversationThread)
 import asyncio
-from openai import OpenAI, tiktoken
+from openai import OpenAI
 import tiktoken
 from enum import StrEnum
+import logging
 
 openai_client = OpenAI()
 
@@ -20,10 +21,10 @@ class modelstr(StrEnum):
     ADA =           "text-ada-001"
 
 class embedstr(StrEnum):
-    CL100K = "cl100k-base"
-    P50K =   "p50k-base"
+    CL100K = "cl100k_base"
+    P50K =   "p50k_base"
 
-model_to_encode = {modelstr.GPT4:          tiktoken.get_encoding(embedstr.CL100K),
+model_to_encode = {modelstr.GPT4:          tiktoken.registry.get_encoding(embedstr.CL100K),
                    modelstr.GPT4VISION:    tiktoken.get_encoding(embedstr.CL100K),
                    modelstr.GPT4PREV:      tiktoken.get_encoding(embedstr.CL100K),
                    modelstr.GPT4TURBOPREV: tiktoken.get_encoding(embedstr.CL100K),
@@ -125,8 +126,13 @@ class OpenAIAdapter(AbstractChatAdapter):
         response_format = cb_kwargs.get('response_format', None)
         openai_client.api_key = cb_kwargs.get('OPENAI_API_KEY', None)
         
-        
+        # Make sure messages isn't more tokens than max_tokens
         messages=self.from_conversationthread(conversationthread)
+        
+        tt_encoder = model_to_encode[model]
+        submission_tokens = len(tt_encoder.encode(messages))
+        if submission_tokens > max_tokens:
+            raise ValueError(f"Submission tokens ({submission_tokens}) is greater than max_tokens ({max_tokens}).")
 
         _response = openai_client.chat.completions.create(
             model=model,
@@ -138,6 +144,12 @@ class OpenAIAdapter(AbstractChatAdapter):
             max_tokens=max_tokens,
             messages=messages
         )
+
+        _actual_submission_tokens = _response.usage.prompt_tokens
+        if _actual_submission_tokens != submission_tokens:
+            logging.WARNING(f"Actual submission tokens ({_actual_submission_tokens}) "
+                            f"is not equal to calculated submission tokens "
+                            "({submission_tokens}).")
 
         _response_role = _response.choices[0].message.role
         _response_content = _response.choices[0].message.content
