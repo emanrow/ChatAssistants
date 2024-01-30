@@ -100,7 +100,7 @@ class OpenAIAdapter(AbstractChatAdapter):
         response_format = cb_kwargs.get('response_format', None)
         openai_client.api_key = cb_kwargs.get('OPENAI_API_KEY', None)
         
-        _response = await openai_client.chat.completions.create(
+        _response = openai_client.chat.completions.create(
             model=model,
             response_format=response_format,
             temperature=1,
@@ -111,7 +111,10 @@ class OpenAIAdapter(AbstractChatAdapter):
             messages=self.from_conversationthread(conversationthread)
         )
 
-        return _response.choices[0].message.content
+        _response_role = _response.choices[0].message.role
+        _response_content = _response.choices[0].message.content
+
+        return {"role": _response_role, "content": _response_content}
         # await asyncio.sleep(1)
         # return {'role': 'assistant', 'content': 'This is a placeholder response.'}
     
