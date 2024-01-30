@@ -29,6 +29,10 @@ venv/
 test-env/
 .test-venv
 test-venv/
+.test_env
+test_env/
+.test_venv
+test_venv/
 
 # mypy
 .mypy_cache/
