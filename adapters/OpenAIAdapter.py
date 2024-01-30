@@ -127,10 +127,13 @@ class OpenAIAdapter(AbstractChatAdapter):
         openai_client.api_key = cb_kwargs.get('OPENAI_API_KEY', None)
         
         # Make sure messages isn't more tokens than max_tokens
-        messages=self.from_conversationthread(conversationthread)
+        messages = self.from_conversationthread(conversationthread)
+        logging.info(f"messages: {messages}")
+        messages_str=json.dumps(messages)
         
         tt_encoder = model_to_encode[model]
-        submission_tokens = len(tt_encoder.encode(messages))
+        submission_tokens = len(tt_encoder.encode(messages_str))
+        logging.info(f"submission_tokens: {submission_tokens}")
         if submission_tokens > max_tokens:
             raise ValueError(f"Submission tokens ({submission_tokens}) is greater than max_tokens ({max_tokens}).")
 
@@ -146,15 +149,14 @@ class OpenAIAdapter(AbstractChatAdapter):
         )
 
         _actual_submission_tokens = _response.usage.prompt_tokens
+        logging.info(f"actual_submission_tokens: {_actual_submission_tokens}")
         if _actual_submission_tokens != submission_tokens:
-            logging.WARNING(f"Actual submission tokens ({_actual_submission_tokens}) "
+            logging.warning(f"Actual submission tokens ({_actual_submission_tokens}) "
                             f"is not equal to calculated submission tokens "
-                            "({submission_tokens}).")
+                            f"({submission_tokens}).")
 
         _response_role = _response.choices[0].message.role
         _response_content = _response.choices[0].message.content
 
         return {"role": _response_role, "content": _response_content}
-        # await asyncio.sleep(1)
-        # return {'role': 'assistant', 'content': 'This is a placeholder response.'}
     

@@ -7,8 +7,6 @@ import enum
 import asyncio
 import copy
 
-logging.basicConfig(level=logging.WARNING)
-
 class RunStatus(enum.Enum):
     UNSUBMITTED = 0
     PENDING = 1
