@@ -2,6 +2,10 @@ import json
 import logging
 from ChatAssistants import (AbstractChatAdapter, ChatMessage, ChatMessages, 
                             SystemChatMessage, ChatExchange, ConversationThread)
+import asyncio
+from openai import OpenAI
+
+openai_client = OpenAI()
 
 class OpenAIAdapter(AbstractChatAdapter):
     def from_chatmessage(self, chatmessage: ChatMessage):
@@ -81,15 +85,33 @@ class OpenAIAdapter(AbstractChatAdapter):
         return ConversationThread(system_message = system_chatmessage,
                                   chat_exchanges = chat_exchanges)    
     
-    def llm_callback(self, conversationthread: ConversationThread,
+    async def llm_callback(self, conversationthread: ConversationThread,
                      *cb_args, **cb_kwargs) -> dict:
         """
         This is the callback function that actually uses the LLM API to obtain
         a response.
         """
-        model = cb_kwargs.get('model')
-        print(f"Conversation thread: {conversationthread}")
-        print(f"Model:               {model}")
-        print(f"Callback args:       {cb_args}")
-        print(f"Callback kw args:    {cb_kwargs}")
-        # TODO: Implement!
+        model = cb_kwargs.get('model', 'gpt-3.5-turbo')
+        frequency_penalty = cb_kwargs.get('frequency_penalty', 0.0)
+        presence_penalty = cb_kwargs.get('presence_penalty', 0.0)
+        temperature = cb_kwargs.get('temperature', 1.0)
+        top_p = cb_kwargs.get('top_p', 1.0)
+        max_tokens = cb_kwargs.get('max_tokens', 2048)
+        response_format = cb_kwargs.get('response_format', None)
+        openai_client.api_key = cb_kwargs.get('OPENAI_API_KEY', None)
+        
+        _response = await openai_client.chat.completions.create(
+            model=model,
+            response_format=response_format,
+            temperature=1,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0,
+            max_tokens=max_tokens,
+            messages=self.from_conversationthread(conversationthread)
+        )
+
+        return _response.choices[0].message.content
+        # await asyncio.sleep(1)
+        # return {'role': 'assistant', 'content': 'This is a placeholder response.'}
+    

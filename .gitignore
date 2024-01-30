@@ -25,6 +25,10 @@ tests/testing.ipynb
 .venv
 env/
 venv/
+.test-env
+test-env/
+.test-venv
+test-venv/
 
 # mypy
 .mypy_cache/
