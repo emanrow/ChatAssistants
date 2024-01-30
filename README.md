@@ -8,6 +8,7 @@
 - Manage conversations with a collection of chat messages.
 - Support for system messages and chat exchanges (pairs of prompt and response).
 - Serialization and deserialization of chat message objects to and from JSON.
+- Interface for to format submissions to, and responses from, LLMs.
 
 ## Classes
 
@@ -15,11 +16,12 @@
 - `SystemChatMessage`: Specialized `ChatMessage` with a role of "system".
 - `ChatExchange`: Manages a pair of chat messages, one as a prompt and the other as a response.
 - `ConversationThread`: Manages a conversation thread that consists of a system message followed by a series of chat exchanges.
+- `AbstractChatAdapter` implementable interface for validating submissions to and from LLMs, including a provided `OpenAIAdapter` for OpenAI `ChatCompletion` submissions.
 
 ## Usage
 
 ```python
-from ChatAssistants import ChatMessage, SystemChatMessage, ChatExchange, ConversationThread
+from ChatAssistants import ChatMessage, SystemChatMessage, ChatExchange, ConversationThread, AbstractChatAdapter
 ```
 
 # Create individual messages

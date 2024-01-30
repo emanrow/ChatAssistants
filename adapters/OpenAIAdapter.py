@@ -3,9 +3,34 @@ import logging
 from ChatAssistants import (AbstractChatAdapter, ChatMessage, ChatMessages, 
                             SystemChatMessage, ChatExchange, ConversationThread)
 import asyncio
-from openai import OpenAI
+from openai import OpenAI, tiktoken
+import tiktoken
+from enum import StrEnum
 
 openai_client = OpenAI()
+
+class modelstr(StrEnum):
+    GPT4 =          "gpt-4"
+    GPT4VISION =    "gpt-4-vision-preview"
+    GPT4PREV =      "gpt-4-1106-preview"
+    GPT4TURBOPREV = "gpt-4-turbo-preview"
+    GPT35TURBO =    "gpt-3.5-turbo"
+    DAVINCI =       "text-davinci-003"
+    ADAEMBED =      "text-embedding-ada-002"
+    ADA =           "text-ada-001"
+
+class embedstr(StrEnum):
+    CL100K = "cl100k-base"
+    P50K =   "p50k-base"
+
+model_to_encode = {modelstr.GPT4:          tiktoken.get_encoding(embedstr.CL100K),
+                   modelstr.GPT4VISION:    tiktoken.get_encoding(embedstr.CL100K),
+                   modelstr.GPT4PREV:      tiktoken.get_encoding(embedstr.CL100K),
+                   modelstr.GPT4TURBOPREV: tiktoken.get_encoding(embedstr.CL100K),
+                   modelstr.GPT35TURBO:    tiktoken.get_encoding(embedstr.CL100K),
+                   modelstr.DAVINCI:       tiktoken.get_encoding(embedstr.P50K),
+                   modelstr.ADAEMBED:      tiktoken.get_encoding(embedstr.CL100K),
+                   modelstr.ADA:           tiktoken.get_encoding(embedstr.P50K)}
 
 class OpenAIAdapter(AbstractChatAdapter):
     def from_chatmessage(self, chatmessage: ChatMessage):
@@ -91,7 +116,7 @@ class OpenAIAdapter(AbstractChatAdapter):
         This is the callback function that actually uses the LLM API to obtain
         a response.
         """
-        model = cb_kwargs.get('model', 'gpt-3.5-turbo')
+        model = cb_kwargs.get('model', modelstr.GPT35TURBO)
         frequency_penalty = cb_kwargs.get('frequency_penalty', 0.0)
         presence_penalty = cb_kwargs.get('presence_penalty', 0.0)
         temperature = cb_kwargs.get('temperature', 1.0)
@@ -100,6 +125,9 @@ class OpenAIAdapter(AbstractChatAdapter):
         response_format = cb_kwargs.get('response_format', None)
         openai_client.api_key = cb_kwargs.get('OPENAI_API_KEY', None)
         
+        
+        messages=self.from_conversationthread(conversationthread)
+
         _response = openai_client.chat.completions.create(
             model=model,
             response_format=response_format,
@@ -108,7 +136,7 @@ class OpenAIAdapter(AbstractChatAdapter):
             frequency_penalty=0,
             presence_penalty=0,
             max_tokens=max_tokens,
-            messages=self.from_conversationthread(conversationthread)
+            messages=messages
         )
 
         _response_role = _response.choices[0].message.role
