@@ -87,6 +87,9 @@ class OpenAIAdapter(AbstractChatAdapter):
         for chatexchange in conversation_thread.chat_exchanges:
             chatmessages_list.append(chatexchange.prompt)
             chatmessages_list.append(chatexchange.response)
+
+        if conversation_thread.next_prompt is not None:
+            chatmessages_list.append(conversation_thread.next_prompt)
             
         return [self.from_chatmessage(message) for message in chatmessages_list]
     

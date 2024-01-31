@@ -330,7 +330,7 @@ class ConversationThread:
         _run_object.cb_kwargs = cb_kwargs
         _run_object.adapter = adapter
         _run_object.conversation_thread = self
-        _run_object.thread_snapshot = copy.deepcopy(self)
+        # _run_object.thread_snapshot = copy.deepcopy(self)
 
         # Broad strokes:
         # TODO: Refactor this all so that it is self-documenting
