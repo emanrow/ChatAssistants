@@ -7,6 +7,12 @@ import enum
 import asyncio
 import copy
 
+class ExcessTokenError(Exception):
+    """Raise when the LLM callback returns an error indicating that
+    the token limit has been exceeded. This will prevent successive
+    futile attempts to complete API calls."""
+    pass
+
 class RunStatus(enum.Enum):
     UNSUBMITTED = 0
     PENDING = 1
@@ -372,6 +378,11 @@ class ConversationThread:
                 ro.raw_response = await ro.adapter.llm_callback(self,
                                                                 *ro.cb_args,
                                                                 **ro.cb_kwargs)
+            except ExcessTokenError as token_e:
+                ro.status = RunStatus.FAILED
+                logging.error(f"Error in LLM callback attempt #{ro.attempts}: {token_e}")
+                ro.error_list.append(token_e)
+                return ro
             except Exception as e:
                 ro.status = RunStatus.ERROR
                 logging.error(f"Error in LLM callback attempt #{ro.attempts}: {e}")

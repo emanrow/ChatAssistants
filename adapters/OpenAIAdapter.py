@@ -1,7 +1,8 @@
 import json
 import logging
 from ChatAssistants import (AbstractChatAdapter, ChatMessage, ChatMessages, 
-                            SystemChatMessage, ChatExchange, ConversationThread)
+                            SystemChatMessage, ChatExchange, ConversationThread,
+                            ExcessTokenError)
 import asyncio
 from openai import OpenAI
 import tiktoken
@@ -137,7 +138,7 @@ class OpenAIAdapter(AbstractChatAdapter):
         return ConversationThread(system_message = system_chatmessage,
                                   chat_exchanges = chat_exchanges,
                                   next_prompt = next_prompt)    
-    
+
     async def llm_callback(self, conversationthread: ConversationThread,
                      *cb_args, **cb_kwargs) -> dict:
         """
@@ -162,7 +163,7 @@ class OpenAIAdapter(AbstractChatAdapter):
         submission_tokens = len(tt_encoder.encode(messages_str))
         logging.info(f"submission_tokens: {submission_tokens}")
         if submission_tokens > max_tokens:
-            raise ValueError(f"Submission tokens ({submission_tokens}) is greater than max_tokens ({max_tokens}).")
+            raise ExcessTokenError(f"Submission tokens ({submission_tokens}) is greater than max_tokens ({max_tokens}).")
 
         _response = openai_client.chat.completions.create(
             model=model,
