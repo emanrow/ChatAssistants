@@ -104,15 +104,33 @@ class OpenAIAdapter(AbstractChatAdapter):
             raise ValueError(f"The list should contain an odd number of at least "
                              "3 messages, but it has length {convo_thread_len}, "
                              "which is even.")
-
+        
+        first_message = self.to_chatmessage(list_of_dicts[0])
+        if first_message.role != "system":
+            raise ValueError(f"The first message should be a system message, but "
+                             f"it's a {first_message.role} message.")
+        
         system_chatmessage = SystemChatMessage.from_chatmessage(self.to_chatmessage(list_of_dicts[0]))
 
+        if convo_thread_len % 2 == 0:
+            # There is an even number of messages, which means there is an
+            # odd number excluding the system message. All but the last one
+            # should be parts of prior exchanges.
+            chat_exchange_list = list_of_dicts[1:-1]
+            # The last message should be the next prompt.
+            next_prompt = self.to_chatmessage(list_of_dicts[-1])
+
         chat_exchanges = []
-        for prompt, response in zip(list_of_dicts[1::2], list_of_dicts[2::2]):
+        for prompt, response in zip(chat_exchange_list[0::2], chat_exchange_list[1::2]):
             chat_exchanges.append(self.to_chatexchange([prompt, response]))
 
+        if next_prompt.role != "user":
+            raise ValueError(f"The last message should be a user message, but "
+                             f"it's a {next_prompt.role} message.")
+
         return ConversationThread(system_message = system_chatmessage,
-                                  chat_exchanges = chat_exchanges)    
+                                  chat_exchanges = chat_exchanges,
+                                  next_prompt = next_prompt)    
     
     async def llm_callback(self, conversationthread: ConversationThread,
                      *cb_args, **cb_kwargs) -> dict:
