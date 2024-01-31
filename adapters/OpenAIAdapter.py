@@ -119,6 +119,12 @@ class OpenAIAdapter(AbstractChatAdapter):
             chat_exchange_list = list_of_dicts[1:-1]
             # The last message should be the next prompt.
             next_prompt = self.to_chatmessage(list_of_dicts[-1])
+        else:
+            # There is an odd number of messages, which means there is an
+            # even number excluding the system message. All of them
+            # should be parts of prior exchanges.
+            chat_exchange_list = list_of_dicts[1:]
+            # The second-to-last message should be the next prompt.
 
         chat_exchanges = []
         for prompt, response in zip(chat_exchange_list[0::2], chat_exchange_list[1::2]):
