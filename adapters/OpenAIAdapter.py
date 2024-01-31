@@ -124,13 +124,13 @@ class OpenAIAdapter(AbstractChatAdapter):
             # even number excluding the system message. All of them
             # should be parts of prior exchanges.
             chat_exchange_list = list_of_dicts[1:]
-            # The second-to-last message should be the next prompt.
+            next_prompt = None
 
         chat_exchanges = []
         for prompt, response in zip(chat_exchange_list[0::2], chat_exchange_list[1::2]):
             chat_exchanges.append(self.to_chatexchange([prompt, response]))
 
-        if next_prompt.role != "user":
+        if next_prompt is not None and next_prompt.role != "user":
             raise ValueError(f"The last message should be a user message, but "
                              f"it's a {next_prompt.role} message.")
 
