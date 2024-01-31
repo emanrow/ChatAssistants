@@ -225,6 +225,7 @@ class ConversationThreadRun:
         self.raw_response: dict = None
         self.adapter: AbstractChatAdapter = adapter
         self.response: ChatMessage = None
+        self._task = None
 
     def adapt_submission(self, tr: ConversationThread):
         if self.adapter is None:
@@ -311,11 +312,6 @@ class ConversationThread:
             raise ValueError("next_prompt must be a user message.")
         self._next_prompt = new_next_prompt
 
-    async def _submit_to_llm(self, callable):
-        # Asynchronous submission logic using the provided callable
-        # This method should return the LLM's response
-        return await callable()
-
     def run(self, max_attempts = 3, timeout = 60, adapter: AbstractChatAdapter = None, 
             *cb_args, **cb_kwargs) -> ConversationThreadRun:
         """This method runs the ConversationThread through the LLM, obtains
@@ -355,7 +351,8 @@ class ConversationThread:
 
         # II.  Submit the _submission_list to the LLM via the handler
         _run_object.status = RunStatus.PENDING
-        asyncio.create_task(self._handle_submission(_run_object))
+        # This isn't running because it's not awaited
+        _run_object._task = asyncio.create_task(self._handle_submission(_run_object))
 
         # III. Return the run object with the response and status set
         return _run_object
