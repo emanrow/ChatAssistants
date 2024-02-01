@@ -3,7 +3,7 @@ import logging
 from ChatAssistants import (AbstractChatAdapter, ChatMessage, ChatMessages, 
                             SystemChatMessage, ChatExchange, ConversationThread,
                             ExcessTokenError)
-import asyncio
+# import asyncio
 from openai import OpenAI
 import tiktoken
 from enum import StrEnum
@@ -17,6 +17,7 @@ class modelstr(StrEnum):
     GPT4PREV =      "gpt-4-1106-preview"
     GPT4TURBOPREV = "gpt-4-turbo-preview"
     GPT35TURBO =    "gpt-3.5-turbo"
+    GPT35TURBO16 =  "gpt-3.5-turbo-16K"
     DAVINCI =       "text-davinci-003"
     ADAEMBED =      "text-embedding-ada-002"
     ADA =           "text-ada-001"
@@ -30,6 +31,7 @@ model_to_encode = {modelstr.GPT4:          tiktoken.registry.get_encoding(embeds
                    modelstr.GPT4PREV:      tiktoken.get_encoding(embedstr.CL100K),
                    modelstr.GPT4TURBOPREV: tiktoken.get_encoding(embedstr.CL100K),
                    modelstr.GPT35TURBO:    tiktoken.get_encoding(embedstr.CL100K),
+                   modelstr.GPT35TURBO16:  tiktoken.get_encoding(embedstr.CL100K),
                    modelstr.DAVINCI:       tiktoken.get_encoding(embedstr.P50K),
                    modelstr.ADAEMBED:      tiktoken.get_encoding(embedstr.CL100K),
                    modelstr.ADA:           tiktoken.get_encoding(embedstr.P50K)}
@@ -139,7 +141,7 @@ class OpenAIAdapter(AbstractChatAdapter):
                                   chat_exchanges = chat_exchanges,
                                   next_prompt = next_prompt)    
 
-    async def llm_callback(self, conversationthread: ConversationThread,
+    def llm_callback(self, conversationthread: ConversationThread,
                      *cb_args, **cb_kwargs) -> dict:
         """
         This is the callback function that actually uses the LLM API to obtain
@@ -150,7 +152,8 @@ class OpenAIAdapter(AbstractChatAdapter):
         presence_penalty = cb_kwargs.get('presence_penalty', 0.0)
         temperature = cb_kwargs.get('temperature', 1.0)
         top_p = cb_kwargs.get('top_p', 1.0)
-        max_tokens = cb_kwargs.get('max_tokens', 2048)
+        max_prompt_tokens = cb_kwargs.get('max_prompt_tokens', 2048)
+        max_response_tokens = cb_kwargs.get('max_response_tokens', 4096)
         response_format = cb_kwargs.get('response_format', None)
         openai_client.api_key = cb_kwargs.get('OPENAI_API_KEY', None)
         
@@ -162,7 +165,7 @@ class OpenAIAdapter(AbstractChatAdapter):
         tt_encoder = model_to_encode[model]
         submission_tokens = len(tt_encoder.encode(messages_str))
         logging.info(f"submission_tokens: {submission_tokens}")
-        if submission_tokens > max_tokens:
+        if submission_tokens > max_prompt_tokens:
             raise ExcessTokenError(f"Submission tokens ({submission_tokens}) is greater than max_tokens ({max_tokens}).")
 
         _response = openai_client.chat.completions.create(
@@ -172,7 +175,7 @@ class OpenAIAdapter(AbstractChatAdapter):
             top_p=1,
             frequency_penalty=0,
             presence_penalty=0,
-            max_tokens=max_tokens,
+            max_tokens=max_response_tokens,
             messages=messages
         )
 

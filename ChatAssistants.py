@@ -4,8 +4,10 @@ import json
 import logging
 from abc import ABC, abstractmethod
 import enum
-import asyncio
+# import asyncio
 import copy
+from time import sleep, time
+
 
 class ExcessTokenError(Exception):
     """Raise when the LLM callback returns an error indicating that
@@ -213,7 +215,7 @@ class ConversationThreadRun:
     the response from the LLM."""
     def __init__(self, max_attempts = 3, timeout = 60, adapter = None):
         self.id = str(uuid.uuid4())
-        self.creation_time = asyncio.get_event_loop().time()
+        self.creation_time = time()
         self.submission_time = None
         self.completion_time = None
         self.duration = None
@@ -358,12 +360,12 @@ class ConversationThread:
         # II.  Submit the _submission_list to the LLM via the handler
         _run_object.status = RunStatus.PENDING
         # This isn't running because it's not awaited
-        _run_object._task = asyncio.create_task(self._handle_submission(_run_object))
+        _run_object._task = self._handle_submission(_run_object)
 
         # III. Return the run object with the response and status set
         return _run_object
 
-    async def _handle_submission(self, ro: ConversationThreadRun):
+    def _handle_submission(self, ro: ConversationThreadRun):
         # This is the asynchronous handler for the LLM submission.
         # Calling the run_oject `ro` just to save space
         _delay_time = 3
@@ -371,18 +373,19 @@ class ConversationThread:
         # II(a). Adapt the LLM response to a ChatMessage object
 
         while ro.attempts < ro.max_attempts:
-            ro.submission_time = asyncio.get_event_loop().time()
+            ro.submission_time = time()
             ro.attempts += 1
             ro.status = RunStatus.SUBMITTED
             try:
-                ro.raw_response = await ro.adapter.llm_callback(self,
-                                                                *ro.cb_args,
-                                                                **ro.cb_kwargs)
+                ro.raw_response = ro.adapter.llm_callback(self,
+                                                          *ro.cb_args,
+                                                          **ro.cb_kwargs)
             except ExcessTokenError as token_e:
                 ro.status = RunStatus.FAILED
-                logging.error(f"Error in LLM callback attempt #{ro.attempts}: {token_e}")
+                logging.error(f"ExcessTokenError in LLM callback: {token_e}")
                 ro.error_list.append(token_e)
-                return ro
+                raise ExcessTokenError(token_e)
+                break
             except Exception as e:
                 ro.status = RunStatus.ERROR
                 logging.error(f"Error in LLM callback attempt #{ro.attempts}: {e}")
@@ -390,7 +393,7 @@ class ConversationThread:
                 if ro.attempts >= ro.max_attempts:
                     ro.status = RunStatus.FAILED
                     return ro
-                await asyncio.sleep(_delay_time)
+                sleep(_delay_time)
                 pass
             else:
                 # Submission was successful: Snapshot the thread and return
@@ -405,7 +408,7 @@ class ConversationThread:
                 # II(c). Update the run object with the response and status
                 # TODO: This needs better validation
                 ro.status = RunStatus.COMPLETED
-                ro.completion_time = asyncio.get_event_loop().time()
+                ro.completion_time = time()
                 ro.duration = ro.completion_time - ro.creation_time
                 return ro
 
