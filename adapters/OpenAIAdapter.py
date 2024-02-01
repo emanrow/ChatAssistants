@@ -17,7 +17,7 @@ class modelstr(StrEnum):
     GPT4PREV =      "gpt-4-1106-preview"
     GPT4TURBOPREV = "gpt-4-turbo-preview"
     GPT35TURBO =    "gpt-3.5-turbo"
-    GPT35TURBO16 =  "gpt-3.5-turbo-16K"
+    GPT35TURBO16 =  "gpt-3.5-turbo-16k"
     DAVINCI =       "text-davinci-003"
     ADAEMBED =      "text-embedding-ada-002"
     ADA =           "text-ada-001"
