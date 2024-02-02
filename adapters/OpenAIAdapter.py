@@ -166,7 +166,7 @@ class OpenAIAdapter(AbstractChatAdapter):
         submission_tokens = len(tt_encoder.encode(messages_str))
         logging.info(f"submission_tokens: {submission_tokens}")
         if submission_tokens > max_prompt_tokens:
-            raise ExcessTokenError(f"Submission tokens ({submission_tokens}) is greater than max_tokens ({max_tokens}).")
+            raise ExcessTokenError(f"Submission tokens ({submission_tokens}) is greater than max_tokens ({max_prompt_tokens}).")
 
         _response = openai_client.chat.completions.create(
             model=model,

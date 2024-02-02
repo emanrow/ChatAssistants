@@ -285,10 +285,12 @@ class ConversationThread:
     with a single ChatMessage (prompt) object and passed to an LLM to obtain
     a response (completing the next ChatExchange), updated with the next ChatExchange,
     or serialized to a JSON string for storage or transmission."""
-    def __init__(self, system_message: SystemChatMessage, chat_exchanges: list = [],
+    def __init__(self, system_message: SystemChatMessage, chat_exchanges: list = None,
                  next_prompt: ChatMessage = None):
         self.system_message = system_message
         self.chat_exchanges = chat_exchanges
+        if self.chat_exchanges is None:
+            self.chat_exchanges = []
         self.next_prompt = next_prompt
 
     @property
