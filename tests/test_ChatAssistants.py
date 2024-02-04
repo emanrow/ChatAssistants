@@ -2,6 +2,53 @@ import unittest
 from ChatAssistants import (ChatMessages, ChatMessage, ChatExchange, SystemChatMessage,
                            Conversation, AbstractChatAdapter)
 
+class MockAdapter(AbstractChatAdapter):
+            def __init__(self):
+                pass
+
+            def from_conversation(self, conversation: Conversation):
+                return [{"role": "system", "content": "This is a mock system message."},
+                        {"role": "user", "content": "This is a mock user message."},
+                        {"role": "assistant", "content": "This is a mock assistant response."},
+                        {"role": "user", "content": "This is a mock user message."},
+                        {"role": "assistant", "content": "This is a mock assistant response."},
+                        {"role": "user", "content": "This is a mock user message."},
+                        {"role": "assistant", "content": "This is a mock assistant response."}]
+            
+            def to_chatmessage(self, message_dict: dict) -> ChatMessage:
+                return ChatMessage(role = message_dict["role"], content = message_dict["content"])
+            
+            def llm_callback(self, conversation: Conversation, *args, **kwargs):
+                return {"role": "assistant", "content": "This is a mock assistant response."}
+
+            # The rest of these are unused but needed to implement the abstract class
+            def from_chatmessage(self, message: ChatMessage) -> dict:
+                pass
+
+            def from_chatexchange(self, chatexchange: ChatExchange):
+                pass
+            
+            def from_chatmessages(self, chatmessages: ChatMessages):
+                pass
+            
+            def from_systemchatmessage(self, systemchatmessage: SystemChatMessage):
+                pass
+            
+            def to_chatexchange(self, prompt_and_response: list) -> ChatExchange:
+                pass
+            
+            def to_chatmessage(self, message_dict: dict) -> ChatMessage:
+                return ChatMessage(role = message_dict["role"], content = message_dict["content"])
+            
+            def to_chatmessages(self, messages_list: list) -> ChatMessages:
+                pass
+            
+            def to_conversation(self, list_of_dicts: list) -> Conversation:
+                pass
+            
+            def to_systemchatmessage(self, message_dict: dict) -> SystemChatMessage:
+                pass
+
 class TestChatMessages(unittest.TestCase):
 
     def setUp(self):
@@ -66,24 +113,14 @@ class TestChatMessages(unittest.TestCase):
                                                ChatExchange(prompt = self.user_message,
                                                             response = self.assistant_message)])
         convo.next_prompt = self.user_message
-        class mock_adapter(AbstractChatAdapter):
-            def __init__(self):
-                pass
+        
 
-            def from_conversation(self, conversation: Conversation):
-                return [{"role": "system", "content": "This is a mock system message."},
-                        {"role": "user", "content": "This is a mock user message."},
-                        {"role": "assistant", "content": "This is a mock assistant response."}]
-            
-            def to_chatmessage(self, message_dict: dict) -> ChatMessage:
-                return ChatMessage(role = message_dict["role"], content = message_dict["content"])
-            
-            def llm_callback(self, conversation: Conversation, *args, **kwargs):
-                return {"role": "assistant", "content": "This is a mock assistant response."}
-
-        convo.run(adapter = mock_adapter)
-        self.assertEqual(len(convo.chat_exchanges), 3)
+        _adapter = MockAdapter()
+        convo.run(adapter = _adapter)
+        self.assertEqual(len(convo.chat_exchanges), 4)
         self.assertEqual(convo.chat_exchanges[0].prompt, self.user_message)
         self.assertEqual(convo.chat_exchanges[1].response, self.assistant_message)
-        self.assertEqual(convo.chat_exchanges[2].prompt.content, "Hello, I am the user message.")
-        self.assertEqual(convo.chat_exchanges[2].response.content, "This is a mock assistant response.")
+        self.assertEqual(convo.chat_exchanges[3].prompt.content, "Hello, I am the user message.")
+        self.assertEqual(convo.chat_exchanges[3].response.content, "This is a mock assistant response.")
+
+ 
