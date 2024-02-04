@@ -209,7 +209,7 @@ class SystemChatMessage(ChatMessage):
     def to_chatmessage(self):
         return ChatMessage(role = "system", content = self.content)
 
-class ConversationThreadRun:
+class ConversationRun:
     """This is a state object for a submission to an LLM. It contains a 
     queryable unique run ID, run diagnostics, status, and
     the response from the LLM."""
@@ -223,8 +223,8 @@ class ConversationThreadRun:
         self.max_attempts = max_attempts
         self.timeout = timeout
         self.status = RunStatus.UNSUBMITTED
-        self.conversation_thread: ConversationThread = None
-        self.thread_snapshot: ConversationThread = None
+        self.conversation: Conversation = None
+        self.convo_snapshot: Conversation = None
         self.submission_list: list = None
         self.llm_callback = None
         self.cb_args = None
@@ -235,18 +235,18 @@ class ConversationThreadRun:
         self.response: ChatMessage = None
         self._task = None
 
-    def adapt_submission(self, tr: ConversationThread):
+    def adapt_submission(self, tr: Conversation):
         if self.adapter is None:
-            logging.warning("No adapter set in ConversationThreadRun object. "
+            logging.warning("No adapter set in ConversationRun object. "
                             "Setting `submission_list` equal to `raw_submission_list`.")
             return None
         
-        if self.conversation_thread is None:
+        if self.conversation is None:
             logging.error("Cannot adapt submission: raw_submission_list is None.")
             return None
 
         try:
-            self.submission_list = self.adapter.from_conversationthread(self.conversation_thread)
+            self.submission_list = self.adapter.from_conversation(self.conversation)
         except Exception as e:
             logging.error(f"Error adapting submission using provided ChatAdapter: {e}")
             raise e
@@ -257,7 +257,7 @@ class ConversationThreadRun:
             return None
         
         if self.adapter is None:
-            logging.warning("No adapter set in ConversationThreadRun object. "
+            logging.warning("No adapter set in ConversationRun object. "
                             "Setting `response` equal to `raw_response`.")
             self.response = self.raw_response
         
@@ -271,7 +271,7 @@ class ConversationThreadRun:
         return f"Run {self.id} status: {self.status}."
     
     def __repr__(self):
-        return (f"ConversationThreadRun(id = {self.id!r}, "
+        return (f"ConversationRun(id = {self.id!r}, "
                 f"status = {self.status!r}, "
                 f"attempts = {self.attempts!r}, "
                 f"max_attempts = {self.max_attempts!r}, "
@@ -279,7 +279,7 @@ class ConversationThreadRun:
                 f"raw_response = {self.raw_response!r}, "
                 f"response = {self.response!r})")
 
-class ConversationThread:
+class Conversation:
     """This is a payload object to manage a list of ChatExchange objects,
     prepended by a SystemChatMessage object. This can then be either appended
     with a single ChatMessage (prompt) object and passed to an LLM to obtain
@@ -289,8 +289,6 @@ class ConversationThread:
                  next_prompt: ChatMessage = None):
         self.system_message = system_message
         self.chat_exchanges = chat_exchanges
-        if self.chat_exchanges is None:
-            self.chat_exchanges = []
         self.next_prompt = next_prompt
 
     @property
@@ -307,6 +305,10 @@ class ConversationThread:
     
     @chat_exchanges.setter
     def chat_exchanges(self, new_chat_exchanges: list):
+        if new_chat_exchanges is None:
+            self._chat_exchanges = []
+            return None
+        
         for chat_exchange in new_chat_exchanges:
             if not isinstance(chat_exchange, ChatExchange):
                 raise ValueError("chat_exchanges must be a list of ChatExchange objects.")
@@ -323,24 +325,24 @@ class ConversationThread:
         self._next_prompt = new_next_prompt
 
     def run(self, max_attempts = 3, timeout = 60, adapter: AbstractChatAdapter = None, 
-            *cb_args, **cb_kwargs) -> ConversationThreadRun:
-        """This method runs the ConversationThread through the LLM, obtains
+            *cb_args, **cb_kwargs) -> ConversationRun:
+        """This method runs the Conversation through the LLM, obtains
         the response to complete the next ChatExchange, and appends the
         new ChatExchange to the list of ChatExchanges.
         
         The LLM callback function should be implemented to take whatever
         arguments """
         if self.next_prompt is None:
-            raise ValueError("next_prompt must be set before running the ConversationThread.")
+            raise ValueError("next_prompt must be set before running the Conversation.")
 
-        # Packaging everything in a stateful ConversationThreadRun object        
-        _run_object = ConversationThreadRun(max_attempts = max_attempts, 
+        # Packaging everything in a stateful ConversationRun object        
+        _run_object = ConversationRun(max_attempts = max_attempts, 
                                             timeout = timeout)
         _run_object.cb_args = cb_args
         _run_object.cb_kwargs = cb_kwargs
         _run_object.adapter = adapter
-        _run_object.conversation_thread = self
-        # _run_object.thread_snapshot = copy.deepcopy(self)
+        _run_object.conversation = self
+        # _run_object.convo_snapshot = copy.deepcopy(self)
 
         # Broad strokes:
         # TODO: Refactor this all so that it is self-documenting
@@ -351,13 +353,13 @@ class ConversationThread:
 
         # Then, in the handler:
         # II(a). Adapt the LLM response to a ChatMessage object
-        # II(b). Update the ConversationThread with the new ChatExchange
+        # II(b). Update the Conversation with the new ChatExchange
         # II(c). Update the run object with the response and status
 
         # I.   Adapt the _submission_list to the LLM input format
         # This isn't right... should be using the appropriate adapter to get the
         # correct format for the LLM input.
-        _run_object.submission_list = _run_object.adapter.from_conversationthread(self)
+        _run_object.submission_list = _run_object.adapter.from_conversation(self)
 
         # II.  Submit the _submission_list to the LLM via the handler
         _run_object.status = RunStatus.PENDING
@@ -367,7 +369,7 @@ class ConversationThread:
         # III. Return the run object with the response and status set
         return _run_object
 
-    def _handle_submission(self, ro: ConversationThreadRun):
+    def _handle_submission(self, ro: ConversationRun):
         # This is the asynchronous handler for the LLM submission.
         # Calling the run_oject `ro` just to save space
         _delay_time = 3
@@ -398,9 +400,9 @@ class ConversationThread:
                 sleep(_delay_time)
                 pass
             else:
-                # Submission was successful: Snapshot the thread and return
-                ro.thread_snapshot = copy.deepcopy(ro.conversation_thread)
-                # II(b). Update the ConversationThread with the new ChatExchange
+                # Submission was successful: Snapshot the conversation and return
+                ro.convo_snapshot = copy.deepcopy(ro.conversation)
+                # II(b). Update the Conversation with the new ChatExchange
                 ro.adapt_response()
                 # TODO: This needs better validation
                 _new_exchange = ChatExchange(prompt = self.next_prompt, 
@@ -429,9 +431,9 @@ class ConversationThread:
 
     def deserialize(self, json_string: str) -> None:
         try:
-            thread = json.loads(json_string)
-            self.system_message = SystemChatMessage(**thread["system_message"])
-            self.chat_exchanges = [ChatExchange(**exchange) for exchange in thread["chat_exchanges"]]
+            convo = json.loads(json_string)
+            self.system_message = SystemChatMessage(**convo["system_message"])
+            self.chat_exchanges = [ChatExchange(**exchange) for exchange in convo["chat_exchanges"]]
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON string.")
 
@@ -439,7 +441,7 @@ class ConversationThread:
         return f"{self.system_message}\n" + "\n".join([str(exchange) for exchange in self.chat_exchanges])
 
     def __repr__(self):
-        return f"ConversationThread(system_message = {self.system_message!r}, chat_exchanges = {self.chat_exchanges!r})"
+        return f"Conversation(system_message = {self.system_message!r}, chat_exchanges = {self.chat_exchanges!r})"
     
 class AbstractChatAdapter(ABC):
     @abstractmethod
@@ -475,22 +477,22 @@ class AbstractChatAdapter(ABC):
         pass
 
     @abstractmethod
-    def from_conversationthread(self, conversationthread: ConversationThread):
+    def from_conversation(self, conversation: Conversation):
         pass
 
     @abstractmethod
-    def to_conversationthread(self) -> ConversationThread:
+    def to_conversation(self) -> Conversation:
         pass
 
     @abstractmethod
-    def llm_callback(self, conversationthread: ConversationThread, 
+    def llm_callback(self, conversation: Conversation, 
                      *args, **kwargs):
         """
         This method should handle the communication with the LLM, process the response,
         and return a value that can be adapted to a ChatMessage object.
         
         A sane way to do this would be to design llm_callback to use the adapter method
-        from_conversationthread to convert the ConversationThread to the LLM input format,
+        from_conversation to convert the Conversation to the LLM input format,
         and to return the LLM response as a dict that can be adapted to a ChatMessage
         object with to_chatmessage. But you do you.
         """

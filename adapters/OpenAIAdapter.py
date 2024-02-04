@@ -1,7 +1,7 @@
 import json
 import logging
 from ChatAssistants import (AbstractChatAdapter, ChatMessage, ChatMessages, 
-                            SystemChatMessage, ChatExchange, ConversationThread,
+                            SystemChatMessage, ChatExchange, Conversation,
                             ExcessTokenError)
 # import asyncio
 from openai import OpenAI
@@ -84,28 +84,28 @@ class OpenAIAdapter(AbstractChatAdapter):
 
         return ChatExchange(prompt = prompt, response = response)
     
-    def from_conversationthread(self, conversation_thread: ConversationThread):
-        chatmessages_list = [conversation_thread.system_message]
+    def from_conversation(self, conversation: Conversation):
+        chatmessages_list = [conversation.system_message]
 
-        for chatexchange in conversation_thread.chat_exchanges:
+        for chatexchange in conversation.chat_exchanges:
             chatmessages_list.append(chatexchange.prompt)
             chatmessages_list.append(chatexchange.response)
 
-        if conversation_thread.next_prompt is not None:
-            chatmessages_list.append(conversation_thread.next_prompt)
+        if conversation.next_prompt is not None:
+            chatmessages_list.append(conversation.next_prompt)
             
         return [self.from_chatmessage(message) for message in chatmessages_list]
     
-    def to_conversationthread(self, list_of_dicts: list) -> ConversationThread:
-        convo_thread_len = len(list_of_dicts)
+    def to_conversation(self, list_of_dicts: list) -> Conversation:
+        convo_len = len(list_of_dicts)
 
-        if convo_thread_len < 3:
+        if convo_len < 3:
             raise ValueError(f"The list should contain an odd number of at least "
-                             "3 messages, but it only has length {convo_thread_len}.")
+                             "3 messages, but it only has length {convo_len}.")
 
-        if convo_thread_len % 2 == 0:
+        if convo_len % 2 == 0:
             raise ValueError(f"The list should contain an odd number of at least "
-                             "3 messages, but it has length {convo_thread_len}, "
+                             "3 messages, but it has length {convo_len}, "
                              "which is even.")
         
         first_message = self.to_chatmessage(list_of_dicts[0])
@@ -115,7 +115,7 @@ class OpenAIAdapter(AbstractChatAdapter):
         
         system_chatmessage = SystemChatMessage.from_chatmessage(self.to_chatmessage(list_of_dicts[0]))
 
-        if convo_thread_len % 2 == 0:
+        if convo_len % 2 == 0:
             # There is an even number of messages, which means there is an
             # odd number excluding the system message. All but the last one
             # should be parts of prior exchanges.
@@ -137,11 +137,11 @@ class OpenAIAdapter(AbstractChatAdapter):
             raise ValueError(f"The last message should be a user message, but "
                              f"it's a {next_prompt.role} message.")
 
-        return ConversationThread(system_message = system_chatmessage,
+        return Conversation(system_message = system_chatmessage,
                                   chat_exchanges = chat_exchanges,
                                   next_prompt = next_prompt)    
 
-    def llm_callback(self, conversationthread: ConversationThread,
+    def llm_callback(self, conversation: Conversation,
                      *cb_args, **cb_kwargs) -> dict:
         """
         This is the callback function that actually uses the LLM API to obtain
@@ -158,7 +158,7 @@ class OpenAIAdapter(AbstractChatAdapter):
         openai_client.api_key = cb_kwargs.get('OPENAI_API_KEY', None)
         
         # Make sure messages isn't more tokens than max_tokens
-        messages = self.from_conversationthread(conversationthread)
+        messages = self.from_conversation(conversation)
         logging.info(f"messages: {messages}")
         messages_str=json.dumps(messages)
         

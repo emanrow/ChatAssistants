@@ -1,6 +1,6 @@
 import unittest
 from ChatAssistants import (ChatMessage, SystemChatMessage, ChatMessages,
-                            ChatExchange, ConversationThread)
+                            ChatExchange, Conversation)
 from adapters.OpenAIAdapter import OpenAIAdapter
 
 class TestOpenAIAdapter(unittest.TestCase):
@@ -118,10 +118,10 @@ class TestOpenAIAdapter(unittest.TestCase):
         prompt = ChatMessage(role="user", content="User message")
         response = ChatMessage(role="assistant", content="Assistant message")
         chat_exchange = ChatExchange(prompt=prompt, response=response)
-        conversation_thread = ConversationThread(system_message=system_message, 
+        conversation_thread = Conversation(system_message=system_message, 
                                                  chat_exchanges=[chat_exchange])
 
-        result = self.adapter.from_conversationthread(conversation_thread)
+        result = self.adapter.from_conversation(conversation_thread)
         expected = [
             {'role': 'system', 'content': 'System message content'},
             {'role': 'user', 'content': 'User message'},
@@ -137,8 +137,8 @@ class TestOpenAIAdapter(unittest.TestCase):
             {'role': 'assistant', 'content': 'Assistant message'}
         ]
 
-        result = self.adapter.to_conversationthread(messages_list)
-        self.assertIsInstance(result, ConversationThread)
+        result = self.adapter.to_conversation(messages_list)
+        self.assertIsInstance(result, Conversation)
         self.assertIsInstance(result.system_message, SystemChatMessage)
         self.assertEqual(len(result.chat_exchanges), 1)
         self.assertEqual(result.system_message.content, 'System message content')
@@ -147,9 +147,9 @@ class TestOpenAIAdapter(unittest.TestCase):
 
         # Test with incorrect list length
         with self.assertRaises(ValueError):
-            self.adapter.to_conversationthread([{'role': 'system', 'content': 'System message content'}])
+            self.adapter.to_conversation([{'role': 'system', 'content': 'System message content'}])
         with self.assertRaises(ValueError):
-            self.adapter.to_conversationthread(messages_list + [{'role': 'user', 'content': 'Another user message'}])
+            self.adapter.to_conversation(messages_list + [{'role': 'user', 'content': 'Another user message'}])
 
 # More test methods can be added here...
 
