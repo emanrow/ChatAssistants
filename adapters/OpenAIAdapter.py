@@ -155,6 +155,7 @@ class OpenAIAdapter(AbstractChatAdapter):
         max_prompt_tokens = cb_kwargs.get('max_prompt_tokens', 2048)
         max_response_tokens = cb_kwargs.get('max_response_tokens', 4096)
         response_format = cb_kwargs.get('response_format', None)
+        image_b64 = cb_kwargs.get('image_b64', None)
         openai_client.api_key = cb_kwargs.get('OPENAI_API_KEY', None)
         
         # Make sure messages isn't more tokens than max_tokens
@@ -168,16 +169,23 @@ class OpenAIAdapter(AbstractChatAdapter):
         if submission_tokens > max_prompt_tokens:
             raise ExcessTokenError(f"Submission tokens ({submission_tokens}) is greater than max_tokens ({max_prompt_tokens}).")
 
-        _response = openai_client.chat.completions.create(
-            model=model,
-            response_format=response_format,
-            temperature=1,
-            top_p=1,
-            frequency_penalty=0,
-            presence_penalty=0,
-            max_tokens=max_response_tokens,
-            messages=messages
-        )
+        completions_kwargs = {"model": model,
+                              "temperature": temperature,
+                              "top_p": top_p,
+                              "frequency_penalty": frequency_penalty,
+                              "presence_penalty": presence_penalty,
+                              "max_tokens": max_response_tokens}
+
+        if model == modelstr.GPT4VISION:
+            _image_url = {"url": f"data:image/jpeg;base64,{image_b64}"}
+            messages[-1]["content"] = [{"type":"text","text":f"{messages[-1]['content']}"},
+                                       {"type":"image","image_url":_image_url}]
+        elif model == modelstr.GPT35TURBO or model == modelstr.GPT4TURBOPREV:
+            completions_kwargs["response_format"] = response_format
+            
+        completions_kwargs["messages"] = messages
+        
+        _response = openai_client.chat.completions.create(**completions_kwargs)
 
         _actual_submission_tokens = _response.usage.prompt_tokens
         logging.info(f"actual_submission_tokens: {_actual_submission_tokens}")
