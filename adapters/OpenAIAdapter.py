@@ -182,7 +182,7 @@ class OpenAIAdapter(AbstractChatAdapter):
                                        {"type":"image","image_url":_image_url}]
         elif model == modelstr.GPT35TURBO or model == modelstr.GPT4TURBOPREV:
             completions_kwargs["response_format"] = response_format
-            
+
         completions_kwargs["messages"] = messages
         
         _response = openai_client.chat.completions.create(**completions_kwargs)
@@ -197,5 +197,5 @@ class OpenAIAdapter(AbstractChatAdapter):
         _response_role = _response.choices[0].message.role
         _response_content = _response.choices[0].message.content
 
-        return {"role": _response_role, "content": _response_content}
+        return {"role": _response_role, "content": _response_content, "raw_response": _response}
     

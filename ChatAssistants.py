@@ -486,7 +486,7 @@ class AbstractChatAdapter(ABC):
 
     @abstractmethod
     def llm_callback(self, conversation: Conversation, 
-                     *args, **kwargs):
+                     *args, **kwargs) -> dict:
         """
         This method should handle the communication with the LLM, process the response,
         and return a value that can be adapted to a ChatMessage object.
