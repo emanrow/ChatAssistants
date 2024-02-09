@@ -156,6 +156,7 @@ class OpenAIAdapter(AbstractChatAdapter):
         max_response_tokens = cb_kwargs.get('max_response_tokens', 4096)
         response_format = cb_kwargs.get('response_format', None)
         image_b64 = cb_kwargs.get('image_b64', None)
+        img_quality = cb_kwargs.get('img_quality', "low")
         openai_client.api_key = cb_kwargs.get('OPENAI_API_KEY', None)
         
         # Make sure messages isn't more tokens than max_tokens
@@ -179,7 +180,9 @@ class OpenAIAdapter(AbstractChatAdapter):
         if model == modelstr.GPT4VISION:
             _image_url = {"url": f"data:image/jpeg;base64,{image_b64}"}
             messages[-1]["content"] = [{"type":"text","text":f"{messages[-1]['content']}"},
-                                       {"type":"image","image_url":_image_url}]
+                                       {"type":"image","image_url": {
+                                           "url": _image_url,
+                                           "detail": img_quality}}]
         elif model == modelstr.GPT35TURBO or model == modelstr.GPT4TURBOPREV:
             completions_kwargs["response_format"] = response_format
 
